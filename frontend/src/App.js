@@ -1,28 +1,29 @@
-// ...existing code...
-import React from "react";
-import { Routes, Route } from "react-router-dom";
-import Home from "./components/Home";
-import Courses from "./components/Courses";
-import AddCourse from "./components/AddCourse";
-import Login from "./components/Login";
-import Register from "./components/Register";
-import CreateClassroom from "./components/CreateClassroom";
-import JoinClassroom from "./components/JoinClassroom";
-<Route path="/join-classroom" element={<JoinClassroom />} />
+import React from 'react'
+import { Routes, Route, Link } from 'react-router-dom'
+import Login from './pages/Login'
+import Dashboard from './pages/Dashboard'
+import Classes from './pages/Classes'
+import Assignments from './pages/Assignments'
+import Discussions from './pages/Discussions'
 
-// ...existing code...
-function App() {
+export default function App(){
   return (
-    <Routes>
-      <Route path="/" element={<Home />} />
-      <Route path="/courses" element={<Courses />} />
-      <Route path="/add-course" element={<AddCourse />} />
-      <Route path="/login" element={<Login />} />
-      <Route path="/register" element={<Register />} />
-      <Route path="/create-classroom" element={<CreateClassroom />} />
-    </Routes>
-  );
+    <div>
+      <nav style={{padding:'12px',borderBottom:'1px solid #ddd'}}>
+        <Link to='/' style={{marginRight:12}}>Home</Link>
+        <Link to='/classes' style={{marginRight:12}}>Classes</Link>
+        <Link to='/assignments' style={{marginRight:12}}>Assignments</Link>
+        <Link to='/discussions' style={{marginRight:12}}>Discussions</Link>
+      </nav>
+      <div style={{padding:20}}>
+        <Routes>
+          <Route path='/' element={<Dashboard/>} />
+          <Route path='/login' element={<Login/>} />
+          <Route path='/classes' element={<Classes/>} />
+          <Route path='/assignments' element={<Assignments/>} />
+          <Route path='/discussions' element={<Discussions/>} />
+        </Routes>
+      </div>
+    </div>
+  )
 }
-
-export default App;
-// ...existing code...
