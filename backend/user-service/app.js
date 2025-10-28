@@ -1,24 +1,51 @@
-const mongoose = require('mongoose');
-const dotenv = require('dotenv');
+// app.js - EduVerse Backend (Key Vault Integrated)
+import express from "express";
+import mongoose from "mongoose";
+import dotenv from "dotenv";
+import { DefaultAzureCredential } from "@azure/identity";
+import { SecretClient } from "@azure/keyvault-secrets";
+
 dotenv.config();
+const app = express();
+app.use(express.json());
 
-const app = require('express')();
-const PORT = process.env.PORT || 5000;
-
-(async () => {
+// Function to load secrets securely from Azure Key Vault
+async function loadSecrets() {
   try {
-    await mongoose.connect(process.env.MONGO_URI, {
-      useNewUrlParser: true,
-      useUnifiedTopology: true,
-      ssl: true,
-      retryWrites: false
-    });
-    console.log("✅ Connected to Cosmos DB (MongoDB API)");
-  } catch (err) {
-    console.error("❌ MongoDB connection error:", err.message);
+    const vaultName = process.env.KEY_VAULT_NAME || "eduversekeyvault";
+    const vaultUrl = `https://${vaultName}.vault.azure.net`;
+    const credential = new DefaultAzureCredential();
+    const client = new SecretClient(vaultUrl, credential);
+
+    // Fetch secrets
+    const mongoSecret = await client.getSecret("MONGO-URI");
+    const storageSecret = await client.getSecret("AZURE-STORAGE-CONNECTION");
+
+    // Store them as environment variables
+    process.env.MONGO_URI = mongoSecret.value;
+    process.env.AZURE_STORAGE_CONNECTION = storageSecret.value;
+
+    console.log("✅ Secrets loaded successfully from Azure Key Vault");
+  } catch (error) {
+    console.error("❌ Error loading secrets from Key Vault:", error);
   }
-})();
+}
 
-app.get('/health', (req, res) => res.json({ status: 'ok', service: 'user-service' }));
+// Start server only after secrets are loaded
+async function startServer() {
+  await loadSecrets();
 
-app.listen(PORT, () => console.log(`user-service listening on port ${PORT}`));
+  // Connect to MongoDB (Cosmos)
+  try {
+    await mongoose.connect(process.env.MONGO_URI);
+    console.log("✅ Connected to Cosmos DB (Mongo API)");
+  } catch (err) {
+    console.error("❌ MongoDB connection failed:", err);
+    process.exit(1);
+  }
+
+  const PORT = process.env.PORT || 5000;
+  app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+}
+
+startServer();
