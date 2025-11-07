@@ -1,5 +1,7 @@
 import React from 'react'
 import { Routes, Route, Link } from 'react-router-dom'
+import CreateClass from './pages/CreateClassroom'; // <-- updated path
+// ...existing code...
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import Classes from './pages/Classes'
@@ -17,6 +19,7 @@ export default function App(){
       </nav>
       <div style={{padding:20}}>
         <Routes>
+          <Route path="/create-class" element={<CreateClass />} />
           <Route path='/' element={<Dashboard/>} />
           <Route path='/login' element={<Login/>} />
           <Route path='/classes' element={<Classes/>} />

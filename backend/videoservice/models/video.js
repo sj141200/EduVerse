@@ -1,11 +1,7 @@
-const mongoose = require('mongoose');
-
+import mongoose from "mongoose";
 const videoSchema = new mongoose.Schema({
-  title: String,
-  description: String,
-  blobUrl: String,
-  uploadedBy: String,
-  uploadDate: { type: Date, default: Date.now }
+  filename: { type: String, required: true },
+  url: { type: String, required: true },
+  uploadedAt: { type: Date, default: Date.now },
 });
-
-module.exports = mongoose.model('Video', videoSchema);
+export default mongoose.model("Video", videoSchema);
