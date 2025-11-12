@@ -1,39 +1,46 @@
 import Sidebar from './components/Sidebar';
 import { Outlet, Link, useNavigate } from 'react-router-dom';
-// import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../../context/AuthContext';
 import { useEffect, useMemo, useState } from 'react';
 import CourseCard from './components/CourseCard'
+import { getEnrolledCourses, joinCourseByCode } from '../../api/courses';
 
 
 function StudentDashboardHome() {
   const navigate = useNavigate();
-  // const { user } = useAuth() || {};
+  const { user, token } = useAuth() || {};
   const [query, setQuery] = useState('');
   const [classes, setClasses] = useState([]);
+  const [joinOpen, setJoinOpen] = useState(false)
+  const [joinCode, setJoinCode] = useState('')
+  const [joinLoading, setJoinLoading] = useState(false)
+  const [joinError, setJoinError] = useState('')
 
   useEffect(() => {
-    // Try to load enrolled classes from localStorage (dev-friendly). If none, use sample data.
-    try {
-      const raw = localStorage.getItem('eduverse_enrolled')
-      if (raw) {
-        setClasses(JSON.parse(raw))
-        return
+    let mounted = true;
+    async function load() {
+      try {
+        if (token) {
+          const res = await getEnrolledCourses(token);
+          if (!mounted) return;
+          const mapped = (Array.isArray(res) ? res : []).map(c => ({ id: c._id || c.id, title: c.title, teacher: (c.teacher && (c.teacher.name || c.teacher.username)) || c.teacher || 'Unknown', color: (c.meta && c.meta.color) || '#1f2937' }));
+          setClasses(mapped);
+          return;
+        }
+      } catch (e) {
+        console.warn('Failed to fetch enrolled', e.message);
       }
-    } catch (e) {
-      // ignore
-    }
 
-    // Sample demo classes to resemble the Google Classroom screenshot
-    const demo = [
-      { id: 'c1', title: 'Tele Communication', term: 'July-November 2025', teacher: 'Tonisha Guin', color: '#d97706', seed: 11 },
-      { id: 'c2', title: 'CSL7620: Machine Learning', term: 'Angshuman Paul', teacher: 'Angshuman Paul', color: '#1e40af', seed: 12 },
-      { id: 'c3', title: 'Mathematical Foundations', term: 'Anand Mishra', teacher: 'Anand Mishra', color: '#111827', seed: 13 },
-      { id: 'c4', title: 'ADSA CSL7560 2025-26', term: 'Vimal Raj Sharma', teacher: 'Vimal Raj Sharma', color: '#0f172a', seed: 14 },
-      { id: 'c5', title: 'CSL7090 Software and Data Eng', term: 'PG July 2025', teacher: 'Sumit Kalra', color: '#1e40af', seed: 15 },
-      { id: 'c6', title: 'Distributed Database Systems', term: 'Romi Banerjee', teacher: 'Romi Banerjee', color: '#2dd4bf', seed: 16 },
-    ];
-    setClasses(demo);
-  }, []);
+      // Fallback demo classes (offline/dev)
+      const demo = [
+        { id: 'c1', title: 'Tele Communication', term: 'July-November 2025', teacher: 'Tonisha Guin', color: '#d97706', seed: 11 },
+        { id: 'c2', title: 'CSL7620: Machine Learning', term: 'Angshuman Paul', teacher: 'Angshuman Paul', color: '#1e40af', seed: 12 },
+      ];
+      if (mounted) setClasses(demo);
+    }
+    load();
+    return () => { mounted = false };
+  }, [token]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -54,9 +61,42 @@ function StudentDashboardHome() {
             <div className="form-control">
               <input type="text" placeholder="Search classes" value={query} onChange={e => setQuery(e.target.value)} className="input input-sm input-bordered w-72" />
             </div>
-            <div className="avatar">
-              <div className="w-10 rounded-full bg-primary text-primary-content flex items-center justify-center">{("Test User" || 'A').charAt(0)}</div>
-            </div>
+              <div className="flex items-center gap-2">
+                <div className="relative">
+                  <button className="btn btn-sm" onClick={() => { setJoinOpen(v => !v); setJoinError('') }}>{joinOpen ? 'Close' : 'Join class'}</button>
+                  {joinOpen && (
+                    <div className="absolute right-0 mt-2 p-3 w-72 bg-base-100 rounded-lg shadow">
+                      <div className="text-sm mb-2">Enter join code</div>
+                      <div className="flex gap-2">
+                        <input value={joinCode} onChange={e => setJoinCode(e.target.value)} placeholder="ABCD1234" className="input input-sm input-bordered flex-1" />
+                        <button className={`btn btn-sm ${joinLoading ? 'loading' : ''}`} onClick={async () => {
+                          if (!joinCode.trim()) return setJoinError('Please enter a code')
+                          setJoinLoading(true); setJoinError('')
+                          try {
+                            const res = await joinCourseByCode(joinCode.trim(), token)
+                            // API returns { success: true, courseId }
+                            if (res && (res.success || res.courseId || res.courseId === 0)) {
+                              const cid = res.courseId || res.course || res.id || (res.success && res.courseId)
+                              // refresh classes
+                              try { const updated = await getEnrolledCourses(token); setClasses((Array.isArray(updated) ? updated : []).map(c => ({ id: c._id || c.id, title: c.title, teacher: (c.teacher && (c.teacher.name || c.teacher.username)) || c.teacher || 'Unknown', color: (c.meta && c.meta.color) || '#1f2937' }))) } catch (e) {}
+                              setJoinLoading(false); setJoinOpen(false); setJoinCode('')
+                              if (cid) navigate(`/st/dashboard/class/${cid}`)
+                              return
+                            }
+                            setJoinError('Invalid code or failed to join')
+                          } catch (err) {
+                            setJoinError(err.message || 'Join failed')
+                          } finally { setJoinLoading(false) }
+                        }}>Go</button>
+                      </div>
+                      {joinError && <div className="text-xs text-error mt-2">{joinError}</div>}
+                    </div>
+                  )}
+                </div>
+                <div className="avatar">
+                  <div className="w-10 rounded-full bg-primary text-primary-content flex items-center justify-center">{("Test User" || 'A').charAt(0)}</div>
+                </div>
+              </div>
           </div>
         </div>
 

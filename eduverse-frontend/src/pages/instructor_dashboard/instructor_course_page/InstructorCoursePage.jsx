@@ -1,7 +1,11 @@
 
 import { Outlet, NavLink, useParams } from 'react-router-dom'
 import { useEffect, useState } from 'react'
-import { fetchCourseDetails } from '../../../utils/courseApi'
+import { useAuth } from '../../../context/AuthContext'
+import { fetchCourseDetails } from '../../../api/courses'
+import { createAnnouncement as apiCreateAnnouncement } from '../../../api/announcements'
+import { updateCourse } from '../../../api/courses'
+import { getToken } from '../../../api/auth'
 
 function TabLink({ to, children }) {
   return (
@@ -17,6 +21,7 @@ function TabLink({ to, children }) {
 function InstructorCoursePage() {
   const { id } = useParams()
   const [course, setCourse] = useState(null)
+  const { user: currentUser } = useAuth() || {}
 
   const [classCode, setClassCode] = useState('')
   const [copied, setCopied] = useState(false)
@@ -34,7 +39,8 @@ function InstructorCoursePage() {
     let mounted = true
     async function load() {
       try {
-        const data = await fetchCourseDetails(id)
+        const token = getToken()
+        const data = await fetchCourseDetails(id, token)
         if (!mounted) return
 
         // set base course
@@ -52,6 +58,16 @@ function InstructorCoursePage() {
             meta.classCode = code
             localStorage.setItem(keyMeta, JSON.stringify(meta))
             setClassCode(code)
+            // persist the generated classCode to server-side meta so join-by-link works
+            try {
+              const token = getToken()
+              // merge with existing server meta if any
+              const serverMeta = (data && data.course && data.course.meta) || {}
+              await apiUpdateCourse(token, id, { meta: { ...serverMeta, classCode: code } })
+            } catch (e) {
+              // ignore persistence errors (keep local copy)
+              console.warn('Failed to persist classCode to server', e.message || e)
+            }
           }
         } catch (e) {
           // ignore
@@ -66,7 +82,20 @@ function InstructorCoursePage() {
           const savedFiles = JSON.parse(localStorage.getItem(fileKey) || '[]')
           const savedAssign = JSON.parse(localStorage.getItem(assignKey) || '[]')
 
-          setAnnouncements([...(savedAnn || []), ...(data.announcements || [])])
+          // merge server announcements with local-saved ones (local ones first)
+          // normalize announcements: if author is an id and matches current user, replace with user's name
+          const remoteAnns = (data.announcements || []).map(a => {
+            try {
+              if (a && typeof a.author === 'string' && currentUser) {
+                const uid = currentUser._id || currentUser.id
+                if (a.author === uid) {
+                  return { ...a, author: currentUser.name || currentUser.username || 'Instructor' }
+                }
+              }
+            } catch (e) {}
+            return a
+          })
+          setAnnouncements([...(savedAnn || []), ...remoteAnns])
           setFiles([...(savedFiles || []), ...(data.files || [])])
           setAssignments([...(savedAssign || []), ...(data.assignments || [])])
         } catch (e) {
@@ -92,7 +121,7 @@ function InstructorCoursePage() {
     }
     load()
     return () => { mounted = false }
-  }, [id])
+  }, [id, currentUser])
 
   if (!course) return null
 
@@ -119,16 +148,31 @@ function InstructorCoursePage() {
     }).catch(() => {})
   }
 
-  function saveEdit() {
+  async function saveEdit() {
     const updates = { title: editTitle, bannerSeed: Number(editSeed) || course.bannerSeed }
-    setCourse(prev => ({ ...prev, ...updates }))
-    try {
-      const key = `eduverse_course_${id}_meta`
-      const raw = localStorage.getItem(key)
-      const meta = raw ? JSON.parse(raw) : {}
-      localStorage.setItem(key, JSON.stringify({ ...meta, ...updates }))
-    } catch (e) {}
-    setEditing(false)
+      try {
+        const token = getToken()
+        const updated = await updateCourse(token, id, updates)
+        const updatedCourse = (updated && (updated._id || updated.id || updated.course)) ? (updated.course || updated) : null
+        if (updatedCourse && typeof updatedCourse === 'object') {
+          setCourse(prev => ({ ...prev, ...updatedCourse }))
+        } else {
+          // unexpected shape, log and fallback
+          console.warn('updateCourse returned unexpected payload', updated)
+          setCourse(prev => ({ ...prev, ...updates }))
+        }
+      } catch (e) {
+        console.error('saveEdit failed', e)
+        setCourse(prev => ({ ...prev, ...updates }))
+        try {
+          const key = `eduverse_course_${id}_meta`
+          const raw = localStorage.getItem(key)
+          const meta = raw ? JSON.parse(raw) : {}
+          localStorage.setItem(key, JSON.stringify({ ...meta, ...updates }))
+        } catch (e) {}
+      } finally {
+        setEditing(false)
+      }
   }
 
   return (
@@ -198,16 +242,35 @@ function InstructorCoursePage() {
               announcements,
               assignments,
               files,
-              addAnnouncement: (text, author = 'Instructor') => {
-                const a = { id: Date.now().toString(), author, text, time: new Date().toLocaleString() }
-                setAnnouncements(prev => [a, ...prev])
-                // persist lightly for dev convenience
+              addAnnouncement: async (text, author = 'Instructor') => {
                 try {
-                  const key = `eduverse_course_${id}_announcements`
-                  const raw = localStorage.getItem(key)
-                  const arr = raw ? JSON.parse(raw) : []
-                  localStorage.setItem(key, JSON.stringify([a, ...arr]))
-                } catch (e) {}
+                  const token = getToken()
+                  const payload = { title: '', body: text }
+                  const created = await apiCreateAnnouncement(id, payload, token)
+                  // backend returns created announcement
+                  let authorName = author
+                  if (created && created.author) {
+                    if (typeof created.author === 'string') {
+                      const uid = currentUser && (currentUser._id || currentUser.id)
+                      if (uid && created.author === uid) authorName = currentUser.name || currentUser.username || author
+                      else authorName = author
+                    } else {
+                      authorName = created.author.name || created.author.username || author
+                    }
+                  }
+                  const a = { id: created._id || created.id, author: authorName, text: created.body || created.text || payload.body, time: created.time || created.createdAt || new Date().toLocaleString() }
+                  setAnnouncements(prev => [a, ...prev])
+                } catch (e) {
+                  // fallback to local only
+                  const a = { id: Date.now().toString(), author, text, time: new Date().toLocaleString() }
+                  setAnnouncements(prev => [a, ...prev])
+                  try {
+                    const key = `eduverse_course_${id}_announcements`
+                    const raw = localStorage.getItem(key)
+                    const arr = raw ? JSON.parse(raw) : []
+                    localStorage.setItem(key, JSON.stringify([a, ...arr]))
+                  } catch (e) {}
+                }
               },
               uploadFile: (file) => {
                 if (!file) return
@@ -240,14 +303,27 @@ function InstructorCoursePage() {
                   localStorage.setItem(key, JSON.stringify(updated))
                 } catch (e) {}
               },
-              updateCourseDetails: (updates) => {
-                setCourse(prev => ({ ...prev, ...updates }))
+              updateCourseDetails: async (updates) => {
                 try {
-                  const key = `eduverse_course_${id}_meta`
-                  const raw = localStorage.getItem(key)
-                  const meta = raw ? JSON.parse(raw) : {}
-                  localStorage.setItem(key, JSON.stringify({ ...meta, ...updates }))
-                } catch (e) {}
+                  const token = getToken()
+                  const updated = await apiUpdateCourse(token, id, updates)
+                  const updatedCourse = (updated && (updated._id || updated.id || updated.course)) ? (updated.course || updated) : null
+                  if (updatedCourse && typeof updatedCourse === 'object') {
+                    setCourse(prev => ({ ...prev, ...updatedCourse }))
+                  } else {
+                    console.warn('updateCourseDetails returned unexpected payload', updated)
+                    setCourse(prev => ({ ...prev, ...updates }))
+                  }
+                } catch (e) {
+                  // fallback local
+                  setCourse(prev => ({ ...prev, ...updates }))
+                  try {
+                    const key = `eduverse_course_${id}_meta`
+                    const raw = localStorage.getItem(key)
+                    const meta = raw ? JSON.parse(raw) : {}
+                    localStorage.setItem(key, JSON.stringify({ ...meta, ...updates }))
+                  } catch (e) {}
+                }
               }
             }} />
           </div>

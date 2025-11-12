@@ -1,23 +1,46 @@
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Menu, Home, History, ListTodo, Settings } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useAuth } from '../../../context/AuthContext';
+import { getEnrolledCourses } from '../../../api/courses';
 
 function Sidebar() {
   const location = useLocation();
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
+  const { token } = useAuth() || {};
   const links = [
     { to: '/st/dashboard', label: 'Dashboard Home', icon: <Home size={18} /> },
   ];
 
-  const enrolledClasses = [
-    { "name": "Technical Communication", "id": "c1" },
-    { "name": "CSL7620: Machine Learning", "id": "c2" },
-    { "name": "Mathematical Foundations", "id": "c3" },
-    { "name": "ADSA CSL7560 2025-26", "id": "c4" },
-    { "name": "CSL7090 Software and Data Eng", "id": "c5" },
-    { "name": "Distributed Database Systems", "id": "c6" },
-  ];
+  const [enrolledClasses, setEnrolledClasses] = useState([]);
+
+  useEffect(() => {
+    let mounted = true;
+    async function load() {
+      if (!token) return;
+      try {
+        const res = await getEnrolledCourses(token);
+        if (!mounted) return;
+        const arr = Array.isArray(res) ? res : [];
+        const mapped = arr.map(c => ({ id: c._id || c.id, title: c.title }));
+        setEnrolledClasses(mapped);
+        return;
+      } catch (e) {
+        console.warn('Failed to load enrolled courses', e.message);
+      }
+
+      // fallback demo if offline
+      const demo = [
+        { name: 'Technical Communication', id: 'c1' },
+        { name: 'CSL7620: Machine Learning', id: 'c2' },
+      ];
+      setEnrolledClasses(demo.map(d => ({ id: d.id, title: d.name })));
+    }
+    load();
+    return () => { mounted = false };
+  }, [token]);
+
   return (
     <>
 
@@ -47,13 +70,14 @@ function Sidebar() {
           <summary className="collapse-title font-semibold">Enrolled Courses</summary>
           <div className="divider"></div>
           <div className="collapse-content text-sm">
+            {enrolledClasses.length === 0 && <div className="text-sm px-2 py-1">No enrolled courses</div>}
             {enrolledClasses.map(cls => (
               <button
                 key={cls.id}
                 className="btn btn-ghost justify-start text-left w-full"
                 onClick={() => { setMenuOpen(false); navigate(`/st/dashboard/class/${cls.id}`); }}
               >
-                {cls.name}
+                {cls.title}
               </button>
             ))}
           </div>

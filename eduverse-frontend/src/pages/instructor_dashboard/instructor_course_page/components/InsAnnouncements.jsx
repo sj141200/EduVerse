@@ -12,7 +12,11 @@ function InsAnnouncements(){
     const t = text.trim()
     if (!t) return
     if (typeof addAnnouncement === 'function') {
-      addAnnouncement(t)
+      // support async addAnnouncement (backend call)
+      const res = addAnnouncement(t)
+      if (res && typeof res.then === 'function') {
+        res.catch(() => {})
+      }
     }
     setText('')
   }
@@ -29,18 +33,32 @@ function InsAnnouncements(){
         </form>
       )}
 
-      {items.map(it => (
-        <div key={it.id} className="rounded-lg bg-base-200 p-4">
-          <div className="flex items-start gap-3">
-            <div className="w-10 h-10 rounded-full bg-secondary text-secondary-content flex items-center justify-center">{it.author?.charAt(0) || 'A'}</div>
-            <div>
-              <div className="font-semibold">{it.author}</div>
-              <div className="text-sm text-base-content/70">{it.text}</div>
+      {items.map(it => {
+        const key = it._id || it.id || JSON.stringify(it)
+        let authorName
+        if (typeof it.author === 'string') {
+          // if it's a likely object id, show generic label instead of raw id
+          if (it.author.length >= 8) authorName = 'Instructor'
+          else authorName = it.author
+        } else {
+          authorName = (it.author && (it.author.name || it.author.username)) || 'Instructor'
+        }
+        const initial = (authorName && String(authorName).charAt(0)) || 'A'
+        const body = it.body || it.text || ''
+        const time = it.time || it.createdAt || ''
+        return (
+          <div key={key} className="rounded-lg bg-base-200 p-4">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-full bg-secondary text-secondary-content flex items-center justify-center">{initial}</div>
+              <div>
+                <div className="font-semibold">{authorName}</div>
+                <div className="text-sm text-base-content/70">{body}</div>
+              </div>
+              <div className="ml-auto text-xs text-base-content/60">{time}</div>
             </div>
-            <div className="ml-auto text-xs text-base-content/60">{it.time}</div>
           </div>
-        </div>
-      ))}
+        )
+      })}
       {items.length === 0 && <div className="text-base-content/70">No announcements yet.</div>}
     </div>
   )

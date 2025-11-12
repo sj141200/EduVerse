@@ -1,7 +1,8 @@
 
-import { Outlet, NavLink, useParams } from 'react-router-dom'
+import { Outlet, NavLink, useParams, useNavigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
-import { fetchCourseDetails } from '../../../utils/courseApi'
+import { useAuth } from '../../../context/AuthContext'
+import { fetchCourseDetails, joinCourse } from '../../../api/courses'
 
 function TabLink({ to, children }) {
   return (
@@ -17,6 +18,11 @@ function TabLink({ to, children }) {
 function StudentCoursePage() {
   const { id } = useParams()
   const [course, setCourse] = useState(null)
+  const { user, token } = useAuth() || {}
+  const navigate = useNavigate()
+  const [enrolled, setEnrolled] = useState(false)
+  const [joinLoading, setJoinLoading] = useState(false)
+  const [joinError, setJoinError] = useState('')
 
   const [announcements, setAnnouncements] = useState([])
   const [assignments, setAssignments] = useState([])
@@ -26,12 +32,22 @@ function StudentCoursePage() {
     let mounted = true
     async function load() {
       try {
-        const data = await fetchCourseDetails(id)
+        const data = await fetchCourseDetails(id, token)
         if (!mounted) return
         setCourse(data.course)
         setAnnouncements(data.announcements || [])
         setAssignments(data.assignments || [])
         setFiles(data.files || [])
+        // determine if current user is enrolled or is teacher
+        try {
+          const uid = user && (user._id || user.id)
+          const students = (data.course && data.course.students) || []
+          const isTeacher = data.course && data.course.teacher && (String(data.course.teacher._id || data.course.teacher) === String(uid))
+          const isStudent = students.some(s => String(s) === String(uid) || (s && (s._id && String(s._id) === String(uid))))
+          setEnrolled(Boolean(isTeacher || isStudent))
+        } catch (e) {
+          setEnrolled(false)
+        }
       } catch (err) {
         // fallback to localStorage/demo
         try {
@@ -72,11 +88,44 @@ function StudentCoursePage() {
             <TabLink to="assignments">Assignments</TabLink>
             <TabLink to="files">Files</TabLink>
           </div>
-
-          <div className="p-4 bg-base-100 rounded-b-lg shadow">
-            {/* The nested routes will render here */}
-            <Outlet context={{ course, announcements, assignments, files }} />
-          </div>
+          {enrolled ? (
+            <div className="p-4 bg-base-100 rounded-b-lg shadow">
+              {/* The nested routes will render here */}
+              <Outlet context={{ course, announcements, assignments, files }} />
+            </div>
+          ) : (
+            <div className="p-6 bg-base-100 rounded-b-lg shadow space-y-4">
+              <div className="text-lg font-semibold">You are not enrolled in this class</div>
+              <div className="text-sm text-base-content/70">To view the classroom content, enter the class join code or contact the instructor.</div>
+              {token ? (
+                <div className="flex items-center gap-2">
+                  <button className={`btn btn-primary btn-sm ${joinLoading ? 'loading' : ''}`} onClick={async () => {
+                    setJoinLoading(true); setJoinError('')
+                    try {
+                      const res = await joinCourse(id, token)
+                      if (res && res.success) {
+                        const data = await fetchCourseDetails(id, token)
+                        setCourse(data.course)
+                        setAnnouncements(data.announcements || [])
+                        setAssignments(data.assignments || [])
+                        setFiles(data.files || [])
+                        setEnrolled(true)
+                        setJoinLoading(false)
+                        navigate(`/st/dashboard/class/${id}`)
+                        return
+                      }
+                      setJoinError('Failed to join the class')
+                    } catch (err) {
+                      setJoinError(err.message || 'Join failed')
+                    } finally { setJoinLoading(false) }
+                  }}>Join class</button>
+                </div>
+              ) : (
+                <div className="text-sm">Please log in to join this class.</div>
+              )}
+              {joinError && <div className="text-xs text-error">{joinError}</div>}
+            </div>
+          )}
         </div>
       </div>
     </div>

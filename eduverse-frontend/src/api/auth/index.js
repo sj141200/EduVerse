@@ -1,19 +1,15 @@
-import { sleep, makeId, safeParse } from '../_utils';
+import { apiFetch } from '../_utils';
 
 const TOKEN_KEY = 'eduverse_token';
 
-// Dev stub: loginUser returns { token, user }
 export async function loginUser({ username, password }) {
-  await sleep(250);
-  // In a real client, you'd POST to /auth/login and return server response.
-  const user = { username, name: username, email: `${username}@example.com`, role: (username === 'teacher' || username.includes('ins')) ? 'instructor' : 'student' };
-  return { token: makeId('t_'), user };
+  const data = await apiFetch('/auth/login', { method: 'POST', body: { username, password } });
+  return data;
 }
 
 export async function registerUser({ username, name, email, password }) {
-  await sleep(300);
-  const user = { username, name: name || username, email };
-  return { token: makeId('t_'), user };
+  const data = await apiFetch('/auth/register', { method: 'POST', body: { username, name, email, password } });
+  return data;
 }
 
 export function storeToken(token) {
@@ -28,5 +24,4 @@ export function removeToken() {
   try { localStorage.removeItem(TOKEN_KEY); } catch (e) { /* ignore */ }
 }
 
-// For convenience, expose alias names used elsewhere
 export { loginUser as login, registerUser as signup };

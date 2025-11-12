@@ -1,39 +1,42 @@
 import Sidebar from './components/Sidebar';
 import { Outlet, Link, useNavigate } from 'react-router-dom';
-// import { useAuth } from '../../contexts/AuthContext';
+import { useAuth } from '../../context/AuthContext';
 import { useEffect, useMemo, useState } from 'react';
 import CourseCard from './components/CourseCard'
+import { getEnrolledCourses, createCourse } from '../../api/courses';
 
 
 function InstructorDashboardHome() {
   const navigate = useNavigate();
-  // const { user } = useAuth() || {};
+  const { user, token } = useAuth() || {};
   const [query, setQuery] = useState('');
   const [classes, setClasses] = useState([]);
 
   useEffect(() => {
-    // Try to load enrolled classes from localStorage (dev-friendly). If none, use sample data.
-    try {
-      const raw = localStorage.getItem('eduverse_enrolled')
-      if (raw) {
-        setClasses(JSON.parse(raw))
-        return
+    let mounted = true;
+    async function load() {
+      try {
+        if (token) {
+          const res = await getEnrolledCourses(token);
+          if (!mounted) return;
+          const mapped = (Array.isArray(res) ? res : []).map(c => ({ id: c._id || c.id, title: c.title, teacher: (c.teacher && (c.teacher.name || c.teacher.username)) || c.teacher || 'Unknown', color: (c.meta && c.meta.color) || '#1f2937' }));
+          setClasses(mapped);
+          return;
+        }
+      } catch (e) {
+        console.warn('Failed to fetch enrolled', e.message);
       }
-    } catch (e) {
-      // ignore
-    }
 
-    // Sample demo classes to resemble the Google Classroom screenshot
-    const demo = [
-      { id: 'c1', title: 'Tele Communication', term: 'July-November 2025', teacher: 'Tonisha Guin', color: '#d97706', seed: 11 },
-      { id: 'c2', title: 'CSL7620: Machine Learning', term: 'Angshuman Paul', teacher: 'Angshuman Paul', color: '#1e40af', seed: 12 },
-      { id: 'c3', title: 'Mathematical Foundations', term: 'Anand Mishra', teacher: 'Anand Mishra', color: '#111827', seed: 13 },
-      { id: 'c4', title: 'ADSA CSL7560 2025-26', term: 'Vimal Raj Sharma', teacher: 'Vimal Raj Sharma', color: '#0f172a', seed: 14 },
-      { id: 'c5', title: 'CSL7090 Software and Data Eng', term: 'PG July 2025', teacher: 'Sumit Kalra', color: '#1e40af', seed: 15 },
-      { id: 'c6', title: 'Distributed Database Systems', term: 'Romi Banerjee', teacher: 'Romi Banerjee', color: '#2dd4bf', seed: 16 },
-    ];
-    setClasses(demo);
-  }, []);
+      // Fallback demo classes (offline/dev)
+      const demo = [
+        { id: 'c1', title: 'Tele Communication', term: 'July-November 2025', teacher: 'Tonisha Guin', color: '#d97706', seed: 11 },
+        { id: 'c2', title: 'CSL7620: Machine Learning', term: 'Angshuman Paul', teacher: 'Angshuman Paul', color: '#1e40af', seed: 12 },
+      ];
+      if (mounted) setClasses(demo);
+    }
+    load();
+    return () => { mounted = false };
+  }, [token]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -57,17 +60,16 @@ function InstructorDashboardHome() {
             <div>
               <button
                 className="btn btn-sm btn-primary"
-                onClick={() => {
-                  const id = `c${Date.now()}`
-                  const newClass = { id, title: 'New Class', term: 'Term TBD', teacher: 'You', color: '#06b6d4', seed: Math.floor(Math.random()*100) }
+                onClick={async () => {
+                  // create course via API
                   try {
-                    const raw = localStorage.getItem('eduverse_enrolled')
-                    const arr = raw ? JSON.parse(raw) : []
-                    arr.unshift(newClass)
-                    localStorage.setItem('eduverse_enrolled', JSON.stringify(arr))
-                  } catch (e) {}
-                  setClasses(prev => [newClass, ...prev])
-                  navigate(`/ins/dashboard/class/${id}`)
+                    const created = await createCourse(token, { title: 'New Class', term: 'Term TBD' });
+                    const mapped = { id: created._id || created.id, title: created.title, teacher: (created.teacher && (created.teacher.name || created.teacher.username)) || 'You', color: (created.meta && created.meta.color) || '#06b6d4' };
+                    setClasses(prev => [mapped, ...prev]);
+                    navigate(`/ins/dashboard/class/${mapped.id}`);
+                  } catch (e) {
+                    console.error('Failed to create course', e.message);
+                  }
                 }}
               >
                 Create class

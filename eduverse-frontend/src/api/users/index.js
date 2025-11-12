@@ -1,41 +1,27 @@
-import { sleep, safeParse } from '../_utils';
+import { apiFetch } from '../_utils';
 
 export async function fetchUserProfile(token) {
-  await sleep(150);
-  try {
-    const raw = localStorage.getItem('eduverse_user');
-    if (raw) return JSON.parse(raw);
-  } catch (e) {
-    // ignore
-  }
-  return { username: 'dev', name: 'Developer', email: 'dev@example.com' };
+  const t = token || undefined;
+  return apiFetch('/auth/me', { method: 'GET', token: t });
 }
 
 export async function fetchUserHistory(token) {
-  await sleep(120);
+  // backend route not implemented yet; return empty for now
   return [];
 }
 
 export async function fetchOrganizedQuizzes(token) {
-  await sleep(120);
+  // backend route not implemented yet; return empty for now
   return [];
 }
 
 export async function updateUserProfile(token, updates) {
-  await sleep(150);
-  try {
-    const raw = localStorage.getItem('eduverse_user');
-    const user = raw ? JSON.parse(raw) : { username: 'dev', name: 'Developer', email: 'dev@example.com' };
-    const merged = { ...user, ...updates };
-    localStorage.setItem('eduverse_user', JSON.stringify(merged));
-    return merged;
-  } catch (e) {
-    throw new Error('Failed to update profile');
-  }
+  const t = token || undefined;
+  // A user update endpoint isn't implemented in the backend yet; if added, call it here.
+  return apiFetch('/users/me', { method: 'PUT', body: updates, token: t });
 }
 
 export async function deleteUserAccount(token) {
-  await sleep(100);
-  try { localStorage.removeItem('eduverse_user'); return { success: true }; }
-  catch (e) { throw new Error('Failed to delete user'); }
+  const t = token || undefined;
+  return apiFetch('/users/me', { method: 'DELETE', token: t });
 }
