@@ -17,26 +17,51 @@ export function safeParse(raw, fallback) {
 
 // API helpers
 export const API_BASE = import.meta.env.VITE_API_URL || 'http://localhost:4000';
+import axios from 'axios'
 
+// axios instance configured for API base and CORS-friendly options
+const axiosInstance = axios.create({
+  baseURL: API_BASE,
+  headers: {
+    Accept: 'application/json',
+  },
+  // allow sending cookies / credentials for cross-site requests when needed
+  withCredentials: true,
+})
+
+// Request helper to match previous apiFetch behavior but using axios
 export async function apiFetch(path, { method = 'GET', body = null, token = null, headers = {} } = {}) {
-  const url = `${API_BASE}${path}`;
-  const opts = { method, headers: { ...headers } };
-  if (token) opts.headers['Authorization'] = `Bearer ${token}`;
+  const opts = {
+    url: path,
+    method: method.toLowerCase(),
+    headers: { ...headers },
+  }
+
+  if (token) {
+    opts.headers = opts.headers || {}
+    opts.headers['Authorization'] = `Bearer ${token}`
+  }
+
   if (body) {
     if (body instanceof FormData) {
-      opts.body = body;
+      // let axios set the correct multipart headers
+      opts.data = body
     } else {
-      opts.headers['Content-Type'] = 'application/json';
-      opts.body = JSON.stringify(body);
+      opts.headers['Content-Type'] = 'application/json'
+      opts.data = body
     }
   }
-  const res = await fetch(url, opts);
-  const text = await res.text();
-  let data = null;
-  try { data = text ? JSON.parse(text) : null; } catch (e) { data = text; }
-  if (!res.ok) {
-    const err = (data && data.error) ? data.error : (data && data.message) ? data.message : res.statusText;
-    throw new Error(err || 'Request failed');
+
+  try {
+    const resp = await axiosInstance.request(opts)
+    return resp.data
+  } catch (err) {
+    // Normalize error similar to previous apiFetch throwing an Error
+    if (err.response) {
+      const d = err.response.data
+      const message = (d && (d.error || d.message)) || err.response.statusText || String(err.message)
+      throw new Error(message)
+    }
+    throw new Error(err.message || 'Request failed')
   }
-  return data;
 }

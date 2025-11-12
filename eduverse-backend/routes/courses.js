@@ -10,6 +10,10 @@ import { requireAuth } from '../middleware/auth.js';
 const router = express.Router();
 const upload = multer({ dest: 'uploads/' });
 
+function escapeRegExp(string) {
+  return String(string).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 // Get enrolled courses for the authenticated user
 router.get('/enrolled', requireAuth, async (req, res) => {
   try {
@@ -71,6 +75,7 @@ router.post('/:id/join', requireAuth, async (req, res) => {
   try {
     // Accept either a Mongo ObjectId course id or several possible codes passed in the URL.
     const key = String(req.params.id || '').trim()
+    console.debug(`[courses.join] attempt to join with key='${key}' by user=${req.user && req.user._id}`);
     let course = null;
     try {
       // try as an ObjectId first
@@ -79,14 +84,16 @@ router.post('/:id/join', requireAuth, async (req, res) => {
       // ignore cast error and fall through to other lookups
     }
     if (!course) {
-      // try common code fields the frontend may use: joinCode (hex), meta.classCode (frontend-generated), case-insensitive
-      course = await Course.findOne({ joinCode: key })
-        || await Course.findOne({ joinCode: key.toLowerCase() })
-        || await Course.findOne({ 'meta.classCode': key })
-        || await Course.findOne({ 'meta.classCode': key.toUpperCase() })
-      ;
+      // try common code fields the frontend may use: joinCode (hex), meta.classCode (frontend-generated)
+      // perform case-insensitive matching so codes are tolerant to upper/lower input
+      const re = new RegExp('^' + escapeRegExp(key) + '$', 'i')
+      course = await Course.findOne({ $or: [ { joinCode: key }, { joinCode: { $regex: re } }, { 'meta.classCode': { $regex: re } } ] })
     }
-    if (!course) return res.status(404).json({ error: 'Not found' });
+    if (!course) {
+      console.debug(`[courses.join] no course matched key='${key}'`);
+      return res.status(404).json({ error: 'Not found' });
+    }
+    console.debug(`[courses.join] matched course._id='${course._id}', joinCode='${course.joinCode}', meta.classCode='${course.meta && course.meta.classCode}'`);
     // if user is not already a student, add them
     const uid = req.user._id;
     const already = course.students && course.students.some(s => String(s) === String(uid));
@@ -99,11 +106,34 @@ router.post('/:id/join', requireAuth, async (req, res) => {
   } catch (e) { console.error(e); res.status(500).json({ error: 'Server error' }); }
 });
 
+// Resolve a course by id or code (public) - used when course links use frontend classCode
+router.get('/resolve/:key', async (req, res) => {
+  try {
+    const key = String(req.params.key || '').trim();
+    let course = null;
+    try {
+      course = await Course.findById(key).populate('teacher', 'name username');
+    } catch (castErr) {
+      // ignore
+    }
+    if (!course) {
+      const re = new RegExp('^' + escapeRegExp(key) + '$', 'i')
+      course = await Course.findOne({ $or: [ { joinCode: key }, { joinCode: { $regex: re } }, { 'meta.classCode': { $regex: re } } ] }).populate('teacher', 'name username')
+    }
+    if (!course) return res.status(404).json({ error: 'Not found' });
+
+    const announcements = await Announcement.find({ course: course._id }).sort({ createdAt: -1 });
+    const assignments = await Assignment.find({ course: course._id }).sort({ createdAt: -1 });
+    res.json({ course, announcements, assignments });
+  } catch (e) { console.error(e); res.status(500).json({ error: 'Server error' }); }
+});
+
 // Join by code
 router.post('/join', requireAuth, async (req, res) => {
   try {
     const { code } = req.body;
-    const course = await Course.findOne({ joinCode: code });
+    const re = new RegExp('^' + escapeRegExp(String(code || '')) + '$', 'i')
+    const course = await Course.findOne({ $or: [ { joinCode: code }, { joinCode: { $regex: re } } ] });
     if (!course) return res.status(400).json({ success: false, error: 'Invalid join code' });
     if (!course.students.includes(req.user._id)) {
       course.students.push(req.user._id);

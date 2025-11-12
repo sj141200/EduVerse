@@ -1,10 +1,14 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
+
+import MessageToast  from './components/MessageToast.jsx'
+
 import NotFoundPage from './pages/not_found/NotFoundPage'
 import LandingPage from './pages/LandingPage'
 import Navbar from './components/Navbar.jsx'
 import Footer from './components/Footer.jsx'
 import LoginPage from './pages/auth/login/LoginPage.jsx'
 import RegisterPage from './pages/auth/register/RegisterPage.jsx'
+import PrivateRoute from './components/PrivateRoute.jsx'
 
 
 
@@ -14,6 +18,9 @@ import StudentCoursePage from './pages/student_dashboard/student_course_page/Stu
 import StAnnouncements from './pages/student_dashboard/student_course_page/components/StAnnouncements.jsx'
 import StAssignments from './pages/student_dashboard/student_course_page/components/StAssignments.jsx'
 import StFiles from './pages/student_dashboard/student_course_page/components/StFiles.jsx'
+import InsProfilePage from './pages/instructor_dashboard/instructor_course_page/profile/InsProfilePage.jsx'
+import StudentProfilePage from './pages/profile/StudentProfilePage.jsx'
+import InstructorProfilePage from './pages/profile/InstructorProfilePage.jsx'
 
 
 // Instructor dashboard imports
@@ -37,8 +44,9 @@ function App() {
             <Route path="/register" element={<RegisterPage />} />
 
             {/* Student dashboard with nested routes - index renders StudentDashboardHome */}
-            <Route path="/st/dashboard" element={<StudentDashboardPage />}>
+            <Route path="/st/dashboard" element={<PrivateRoute allowedRoles={["student"]}><StudentDashboardPage /></PrivateRoute>}>
               <Route index element={<StudentDashboardHome />} />
+               <Route path="profile" element={<StudentProfilePage />} />
               {/* Course detail with nested sections */}
               <Route path="class/:id" element={<StudentCoursePage />}>
                 <Route index element={<StAnnouncements />} />
@@ -52,8 +60,9 @@ function App() {
             {/* Instructor dashboard with nested routes - index renders InstructorDashboardHome */}
 
 
-            <Route path="/ins/dashboard" element={<InstructorDashboardPage />}>
+            <Route path="/ins/dashboard" element={<PrivateRoute allowedRoles={["instructor"]}><InstructorDashboardPage /></PrivateRoute>}>
               <Route index element={<InstructorDashboardHome />} />
+                <Route path="profile" element={<InstructorProfilePage />} />
               {/* Course detail with nested sections */}
               <Route path="class/:id" element={<InstructorCoursePage />}>
                 <Route index element={<InsAnnouncements />} />
@@ -67,6 +76,7 @@ function App() {
              />
           </Routes>
         </main>
+        <MessageToast />
         <Footer />
       </div>
     </BrowserRouter>

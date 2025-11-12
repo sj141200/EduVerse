@@ -5,6 +5,12 @@ export async function fetchUserProfile(token) {
   return apiFetch('/auth/me', { method: 'GET', token: t });
 }
 
+export async function getUserById(id, token) {
+  const t = token || undefined;
+  if (!id) return null;
+  return apiFetch(`/users/${id}`, { method: 'GET', token: t });
+}
+
 export async function fetchUserHistory(token) {
   // backend route not implemented yet; return empty for now
   return [];

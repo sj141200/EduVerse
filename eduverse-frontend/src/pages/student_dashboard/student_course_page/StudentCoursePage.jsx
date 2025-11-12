@@ -1,8 +1,11 @@
 
 import { Outlet, NavLink, useParams, useNavigate } from 'react-router-dom'
 import { useEffect, useState } from 'react'
+import { useMessage } from '../../../context/MessageContext'
 import { useAuth } from '../../../context/AuthContext'
 import { fetchCourseDetails, joinCourse } from '../../../api/courses'
+import { getAnnouncements } from '../../../api/announcements'
+import { getUserById } from '../../../api/users'
 
 function TabLink({ to, children }) {
   return (
@@ -22,7 +25,7 @@ function StudentCoursePage() {
   const navigate = useNavigate()
   const [enrolled, setEnrolled] = useState(false)
   const [joinLoading, setJoinLoading] = useState(false)
-  const [joinError, setJoinError] = useState('')
+  const { showMessage } = useMessage()
 
   const [announcements, setAnnouncements] = useState([])
   const [assignments, setAssignments] = useState([])
@@ -35,7 +38,41 @@ function StudentCoursePage() {
         const data = await fetchCourseDetails(id, token)
         if (!mounted) return
         setCourse(data.course)
-        setAnnouncements(data.announcements || [])
+        // If course.teacher is present as an id (not populated), fetch the public profile
+        try {
+          const teacherVal = data.course && (data.course.teacher || (data.course.teacher === 0 ? 0 : null))
+          if (teacherVal && typeof teacherVal === 'string' && /^[a-f0-9]{24}$/.test(teacherVal)) {
+            try {
+              const teacherProfile = await getUserById(teacherVal, token)
+              if (teacherProfile) {
+                // merge populated teacher into course object
+                setCourse(prev => ({ ...(prev || {}), teacher: teacherProfile }))
+              }
+            } catch (e) {
+              // ignore - leave course.teacher as id
+            }
+          }
+        } catch (e) {}
+        // announcements returned by the course endpoint may be full objects
+        // or just an array of announcement ids. If we detect ids, fetch
+        // the full announcement objects from the announcements endpoint.
+        try {
+          const rawAnns = data.announcements || []
+          if (Array.isArray(rawAnns) && rawAnns.length > 0 && typeof rawAnns[0] !== 'object') {
+            // fetch full announcements list for this course
+            try {
+              const res = await getAnnouncements(id, token)
+              const fetched = Array.isArray(res) ? res : (res && (res.announcements || res.data) ? (res.announcements || res.data) : [])
+              setAnnouncements(fetched || rawAnns)
+            } catch (e) {
+              setAnnouncements(rawAnns)
+            }
+          } else {
+            setAnnouncements(rawAnns)
+          }
+        } catch (e) {
+          setAnnouncements(data.announcements || [])
+        }
         setAssignments(data.assignments || [])
         setFiles(data.files || [])
         // determine if current user is enrolled or is teacher
@@ -100,7 +137,7 @@ function StudentCoursePage() {
               {token ? (
                 <div className="flex items-center gap-2">
                   <button className={`btn btn-primary btn-sm ${joinLoading ? 'loading' : ''}`} onClick={async () => {
-                    setJoinLoading(true); setJoinError('')
+                    setJoinLoading(true)
                     try {
                       const res = await joinCourse(id, token)
                       if (res && res.success) {
@@ -110,20 +147,21 @@ function StudentCoursePage() {
                         setAssignments(data.assignments || [])
                         setFiles(data.files || [])
                         setEnrolled(true)
+                        showMessage('Joined class successfully', 'success')
                         setJoinLoading(false)
                         navigate(`/st/dashboard/class/${id}`)
                         return
                       }
-                      setJoinError('Failed to join the class')
+                      showMessage('Failed to join the class', 'error')
                     } catch (err) {
-                      setJoinError(err.message || 'Join failed')
+                      showMessage(err.message || 'Join failed', 'error')
                     } finally { setJoinLoading(false) }
                   }}>Join class</button>
                 </div>
               ) : (
                 <div className="text-sm">Please log in to join this class.</div>
               )}
-              {joinError && <div className="text-xs text-error">{joinError}</div>}
+              {/* Errors are displayed using global MessageContext */}
             </div>
           )}
         </div>

@@ -1,5 +1,5 @@
 
-import { useMessage } from '../contexts/MessageContext';
+import { useMessage } from '../context/MessageContext';
 import { CheckCircle, Info, AlertTriangle, X, AlertOctagon } from 'lucide-react';
 import React from 'react';
 
@@ -56,7 +56,7 @@ function ToastItem({ msg, onClose, index }) {
       }}
     >
       <span className="mr-1">{typeToIcon[msg.type] || typeToIcon.info}</span>
-      <span className="flex-1 break-words">{msg.message}</span>
+      <span className="flex-1 wrap-break-word">{msg.message}</span>
       <button
         className="btn btn-xs btn-circle btn-ghost absolute top-2 right-2"
         aria-label="Dismiss"

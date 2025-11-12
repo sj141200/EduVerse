@@ -13,7 +13,8 @@ import { getSecret } from './keyVault.js';
 const app = express();
 const PORT = process.env.PORT || 4000;
 
-app.use(cors());
+// Allow CORS requests and allow credentials for cross-site requests
+app.use(cors({ origin: true, credentials: true }));
 app.use(express.json());
 app.use(morgan('dev'));
 

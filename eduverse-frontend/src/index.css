@@ -4,8 +4,8 @@
 
 @plugin "daisyui/theme" {
   name: "eduverse-light";
-  default: true;
-  prefersdark: true;
+  default: false;
+  prefersdark: false;
   color-scheme: "light";
   --color-base-100: oklch(98% 0 0);
   --color-base-200: oklch(97% 0 0);
@@ -42,8 +42,8 @@
 
 @plugin "daisyui/theme" {
   name: "eduverse-dark";
-  default: false;
-  prefersdark: false;
+  default: true;
+  prefersdark: true;
   color-scheme: "dark";
   --color-base-100: oklch(14% 0 0);
   --color-base-200: oklch(20% 0 0);

@@ -11,6 +11,7 @@ function Sidebar() {
   const { token, user } = useAuth() || {};
   const links = [
     { to: '/ins/dashboard', label: 'Dashboard Home', icon: <Home size={18} /> },
+    { to: '/ins/dashboard/profile', label: 'Profile', icon: <Settings size={18} /> },
   ];
 
   const [createdCourses, setCreatedCourses] = useState([]);

@@ -26,10 +26,10 @@ export function AuthProvider({ children }) {
     // else: keep user as is (from login/register or localStorage)
   }, [token]);
 
-  const login = useCallback(async (username, password) => {
+  const login = useCallback(async (username, password, role) => {
     setLoading(true);
     try {
-      const res = await loginUser({ username, password });
+      const res = await loginUser({ username, password, role });
       storeToken(res.token);
       setToken(res.token);
       
@@ -55,10 +55,10 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
-  const register = useCallback(async (username, name, email, password) => {
+  const register = useCallback(async (username, name, email, password, role) => {
     setLoading(true);
     try {
-      const res = await registerUser({ username, name, email, password });
+      const res = await registerUser({ username, name, email, password, role });
       storeToken(res.token);
       setToken(res.token);
       if (res.user) {
