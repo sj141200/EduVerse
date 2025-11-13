@@ -3,6 +3,7 @@ import { Menu, Home, History, ListTodo, Settings } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../../context/AuthContext';
 import { getEnrolledCourses } from '../../../api/courses';
+import { useMessage } from '../../../context/MessageContext';
 
 function Sidebar() {
   const location = useLocation();
@@ -36,7 +37,8 @@ function Sidebar() {
         const enrolled = mapped.filter(c => !created.find(x => x.id === c.id));
         setCreatedCourses(created);
       } catch (e) {
-        console.warn('Failed to load courses for sidebar', e.message);
+        const { showMessage } = useMessage() || {}
+        if (showMessage) showMessage('Failed to load courses for sidebar: ' + (e && (e.message || e)), 'warning')
       }
     }
     load();

@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { loginUser, registerUser, storeToken, getToken, removeToken } from "../api/auth";
 import { fetchUserProfile } from "../api/users";
+import { useMessage } from './MessageContext.jsx'
 
 const AuthContext = createContext();
 
@@ -16,6 +17,7 @@ export function AuthProvider({ children }) {
   });
   const [token, setToken] = useState(getToken());
   const [loading, setLoading] = useState(false);
+  const { showMessage } = useMessage() || {}
 
   // On mount, check for token and set user if needed (optional: decode token for user info)
   useEffect(() => {
@@ -39,7 +41,7 @@ export function AuthProvider({ children }) {
         setUser(userProfile);
         localStorage.setItem("eduverse_user", JSON.stringify(userProfile));
       } catch (profileError) {
-        console.warn("Failed to fetch user profile:", profileError.message);
+        if (showMessage) showMessage(`Failed to fetch user profile: ${profileError.message || profileError}`, 'warning')
         // Still consider login successful even if profile fetch fails
         setUser(res.user || null);
         if (res.user) {

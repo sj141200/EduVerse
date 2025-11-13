@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { LogOut, Grid } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { useEffect, useState } from 'react';
+import { useMessage } from '../context/MessageContext';
 import { getEnrolledCourses } from '../api/courses';
 
 
@@ -21,7 +22,8 @@ function Navbar() {
         if (!mounted) return;
         setCourses(Array.isArray(res) ? res : []);
       } catch (e) {
-        console.warn('Failed to load enrolled courses', e.message);
+        const { showMessage } = useMessage() || {}
+        if (showMessage) showMessage('Failed to load enrolled courses: ' + (e && (e.message || e)), 'warning')
         setCourses([]);
       }
     }

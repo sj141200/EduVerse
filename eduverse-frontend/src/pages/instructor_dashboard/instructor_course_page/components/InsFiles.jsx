@@ -1,5 +1,6 @@
 import { useOutletContext } from 'react-router-dom'
 import { useRef, useEffect, useState } from 'react'
+import { useMessage } from '../../../../context/MessageContext.jsx'
 import { getFiles, getDownloadUrl } from '../../../../api/files'
 import { getToken } from '../../../../api/auth'
 
@@ -47,7 +48,8 @@ function InsFiles(){
         }
         setItems(dedup)
       } catch (e) {
-        console.error('Failed to load files', e)
+        const { showMessage } = useMessage() || {}
+        if (showMessage) showMessage('Failed to load files: ' + (e && (e.message || e)), 'error')
       }
     }
     load()
@@ -130,7 +132,8 @@ function InsFiles(){
                   const filename = it.name || it.filename || it.originalName || 'file'
                   await triggerDownloadWithName(downloadUrl, filename)
                 } catch (e) {
-                  console.error('Download failed', e)
+                  const { showMessage } = useMessage() || {}
+                  if (showMessage) showMessage('Download failed: ' + (e && (e.message || e)), 'error')
                   if (it.url) await triggerDownloadWithName(it.url, it.name || it.filename || it.originalName || 'file')
                 }
               }}>Download</button>

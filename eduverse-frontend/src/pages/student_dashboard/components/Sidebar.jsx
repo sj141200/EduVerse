@@ -3,6 +3,7 @@ import { Menu, Home, History, ListTodo, Settings } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../../context/AuthContext';
 import { getEnrolledCourses } from '../../../api/courses';
+import { useMessage } from '../../../context/MessageContext';
 
 function Sidebar() {
   const location = useLocation();
@@ -28,7 +29,8 @@ function Sidebar() {
         setEnrolledClasses(mapped);
         return;
       } catch (e) {
-        console.warn('Failed to load enrolled courses', e.message);
+        const { showMessage } = useMessage() || {}
+        if (showMessage) showMessage('Failed to load enrolled courses: ' + (e && (e.message || e)), 'warning')
       }
 
       // fallback demo if offline

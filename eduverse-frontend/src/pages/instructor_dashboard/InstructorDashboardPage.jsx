@@ -2,6 +2,7 @@ import Sidebar from './components/Sidebar';
 import { Outlet, Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { useEffect, useMemo, useState } from 'react';
+import { useMessage } from '../../context/MessageContext';
 import CourseCard from './components/CourseCard'
 import { getEnrolledCourses, createCourse } from '../../api/courses';
 
@@ -24,7 +25,8 @@ function InstructorDashboardHome() {
           return;
         }
       } catch (e) {
-        console.warn('Failed to fetch enrolled', e.message);
+        const { showMessage } = useMessage() || {}
+        if (showMessage) showMessage('Failed to fetch enrolled classes: ' + (e && (e.message || e)), 'warning')
       }
 
       // Fallback demo classes (offline/dev)
@@ -68,7 +70,8 @@ function InstructorDashboardHome() {
                     setClasses(prev => [mapped, ...prev]);
                     navigate(`/ins/dashboard/class/${mapped.id}`);
                   } catch (e) {
-                    console.error('Failed to create course', e.message);
+                    const { showMessage } = useMessage() || {}
+                    if (showMessage) showMessage('Failed to create course: ' + (e && (e.message || e)), 'error')
                   }
                 }}
               >

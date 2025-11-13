@@ -16,6 +16,11 @@ export async function gradeAssignment(courseId, assignmentId, grading, token) {
   return apiFetch(`/courses/${courseId}/assignments/${assignmentId}`, { method: 'PUT', body: { grading }, token: t });
 }
 
+export async function updateAssignment(courseId, assignmentId, assignmentPayload, token) {
+  const t = token || undefined
+  return apiFetch(`/courses/${courseId}/assignments/${assignmentId}`, { method: 'PUT', body: assignmentPayload, token: t })
+}
+
 export async function submitAssignment(courseId, assignmentId, submission, token) {
   const t = token || undefined;
   // submission can include file; submission may be FormData

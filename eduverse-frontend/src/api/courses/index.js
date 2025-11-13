@@ -26,7 +26,6 @@ export async function createCourse(token, courseData) {
 }
 
 export async function updateCourse(token, courseId, updates) {
-  console.log(updates);
   const t = token || undefined;
   return apiFetch(`/courses/${courseId}`, { method: 'PUT', body: updates, token: t });
 }

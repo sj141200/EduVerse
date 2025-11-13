@@ -7,10 +7,10 @@ import { MessageProvider } from './context/MessageContext.jsx'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
-    <AuthProvider>
-      <MessageProvider>
-        <App />
+    <MessageProvider>
+        <AuthProvider>
+          <App />
+        </AuthProvider>
       </MessageProvider>
-    </AuthProvider>
   </StrictMode>,
 )

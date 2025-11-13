@@ -7,7 +7,7 @@ import Announcement from '../models/Announcement.js';
 import Assignment from '../models/Assignment.js';
 import UploadedFile from '../models/UploadedFile.js';
 import { requireAuth } from '../middleware/auth.js';
-import { uploadBuffer, deleteBlob, generateDownloadSas } from '../azureBlob.js';
+import { uploadBuffer, deleteBlob, generateDownloadSas,ensureClient } from '../azureBlob.js';
 
 const router = express.Router();
 // Use memory storage so we can stream to Azure Blob directly
@@ -196,10 +196,54 @@ router.delete('/:id/announcements/:annId', requireAuth, async (req, res) => {
 
 // Assignments
 router.get('/:id/assignments', requireAuth, async (req, res) => {
+  await ensureClient();
   try {
-    const as = await Assignment.find({ course: req.params.id }).sort({ createdAt: -1 });
-    res.json(as);
-  } catch (e) { console.error(e); res.status(500).json({ error: 'Server error' }); }
+    const as = await Assignment.find({ course: req.params.id }).sort({ createdAt: -1 }).populate('submissions.student', 'username name');
+
+    // Enrich assignments with whether the requesting user has already submitted
+    const enriched = await Promise.all((as || []).map(async (a) => {
+      const obj = a.toObject ? a.toObject() : JSON.parse(JSON.stringify(a));
+      try {
+        const mine = (a.submissions || []).find(s => String(s.student) === String(req.user._id));
+        if (mine) {
+          const out = mine.toObject ? mine.toObject() : JSON.parse(JSON.stringify(mine));
+          // attach uploaded file metadata and SAS URL if present
+          if (out && out.content && out.content.file && out.content.file.uploadedFileId) {
+            try {
+              const uf = await UploadedFile.findById(String(out.content.file.uploadedFileId)).lean();
+              if (uf) {
+                out.content.file.filename = uf.filename || uf.originalName || out.content.file.filename;
+                out.content.file.size = uf.size || out.content.file.size;
+                out.content.file.uploadedFileId = String(uf._id);
+                if (uf.blobName) {
+                  try {
+                    const url = await generateDownloadSas(uf.blobName, 30);
+                    out.content.file.downloadUrl = url;
+                  } catch (e) {
+                    // ignore SAS failures per-file
+                  }
+                }
+              }
+            } catch (e) {
+              // ignore per-file lookup errors
+            }
+          }
+          obj.submitted = true;
+          obj.mySubmission = out;
+        } else {
+          obj.submitted = false;
+        }
+      } catch (e) {
+        obj.submitted = false;
+      }
+      return obj;
+    }));
+
+    res.json(enriched);
+  } catch (e) {
+    console.error('[courses.assignments] error', e && (e.message || e));
+    res.status(500).json({ error: 'Server error' });
+  }
 });
 
 router.post('/:id/assignments', requireAuth, async (req, res) => {
@@ -215,20 +259,134 @@ router.post('/:id/assignments/:assignmentId/submit', requireAuth, upload.single(
   try {
     const assignment = await Assignment.findById(req.params.assignmentId);
     if (!assignment) return res.status(404).json({ error: 'Assignment not found' });
-    const submission = { student: req.user._id, content: { text: req.body.text || null, file: req.file ? { path: req.file.path, originalname: req.file.originalname } : null }, uploadedAt: new Date() };
+
+    // support two flows:
+    // 1) frontend already uploaded the file via /courses/:id/files and sent uploadedFileId in body
+    // 2) frontend posted multipart/form-data with file field (multer) -> we upload to Azure and create UploadedFile doc
+
+    let uploadedFileRef = null;
+    // prefer explicit uploadedFileId in body
+    if (req.body && req.body.uploadedFileId) {
+      try {
+        const doc = await UploadedFile.findById(String(req.body.uploadedFileId));
+        if (doc) uploadedFileRef = doc;
+      } catch (e) {
+        // ignore
+      }
+    }
+
+    // if file was directly posted, upload to Azure and create UploadedFile doc (student submission)
+    if (!uploadedFileRef && req.file) {
+      await ensureClient();
+      // build blobName like other upload route (include assignment)
+      const safeName = req.file.originalname.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+      const blobName = `${req.params.id}/assignments/${req.params.assignmentId}/${Date.now()}-${crypto.randomBytes(4).toString('hex')}-${safeName}`;
+      try {
+        const up = await uploadBuffer(req.file.buffer, blobName, req.file.mimetype);
+        const uploaded = await UploadedFile.create({
+          filename: req.file.originalname,
+          originalName: req.file.originalname,
+          blobName,
+          container: process.env.AZURE_STORAGE_CONTAINER || process.env.STORAGE_CONTAINER || undefined,
+          url: up && up.url ? up.url : undefined,
+          size: req.file.size,
+          contentType: req.file.mimetype,
+          uploader: req.user._id,
+          uploaderRole: 'student',
+          course: req.params.id,
+          assignment: req.params.assignmentId,
+          materialType: 'submission'
+        });
+
+        // add lightweight meta to course.meta.files for backward compatibility
+        const course = await Course.findById(req.params.id);
+        if (course) {
+          const fileMeta = { id: String(uploaded._id), name: req.file.originalname, size: req.file.size, blobName, url: up && up.url ? up.url : undefined, uploadedAt: new Date(), uploader: req.user._id };
+          course.meta = course.meta || {};
+          course.meta.files = course.meta.files || [];
+          course.meta.files.unshift(fileMeta);
+          await course.save();
+        }
+
+        uploadedFileRef = uploaded;
+      } catch (e) {
+        console.error('[assignments.submit] Azure upload failed', e && (e.message || e));
+        return res.status(500).json({ error: 'Upload failed' });
+      }
+    }
+
+    // Build submission object: prefer uploadedFileRef if present
+    const submission = {
+      student: req.user._id,
+      content: {
+        text: req.body && req.body.text ? String(req.body.text) : null,
+        file: uploadedFileRef ? { uploadedFileId: String(uploadedFileRef._id), filename: uploadedFileRef.filename, size: uploadedFileRef.size } : null
+      },
+      uploadedAt: new Date()
+    };
+
     assignment.submissions.unshift(submission);
     await assignment.save();
     res.json(submission);
-  } catch (e) { console.error(e); res.status(500).json({ error: 'Server error' }); }
+  } catch (e) {
+    console.error('[assignments.submit] unexpected error', e && (e.message || e));
+    res.status(500).json({ error: 'Server error' });
+  }
 });
 
 // Get submissions for an assignment
 router.get('/:id/assignments/:assignmentId/submissions', requireAuth, async (req, res) => {
+  await ensureClient();
   try {
+    const course = await Course.findById(req.params.id);
+    if (!course) return res.status(404).json({ error: 'Course not found' });
+
+    // Authorization: allow teacher or enrolled students
+    const uid = req.user && req.user._id;
+    const isTeacher = course.teacher && String(course.teacher) === String(uid);
+    const isStudent = Array.isArray(course.students) && course.students.some(s => String(s) === String(uid));
+    if (!isTeacher && !isStudent) return res.status(403).json({ error: 'Forbidden' });
+
     const assignment = await Assignment.findById(req.params.assignmentId).populate('submissions.student', 'username name');
     if (!assignment) return res.status(404).json({ error: 'Assignment not found' });
-    res.json(assignment.submissions || []);
-  } catch (e) { console.error(e); res.status(500).json({ error: 'Server error' }); }
+
+    // Enrich submissions with uploaded file metadata and short-lived download URL when available
+    const enriched = await Promise.all((assignment.submissions || []).map(async (s) => {
+      const out = s.toObject ? s.toObject() : JSON.parse(JSON.stringify(s));
+      try {
+        if (out && out.content && out.content.file && out.content.file.uploadedFileId) {
+          try {
+            const uf = await UploadedFile.findById(String(out.content.file.uploadedFileId)).lean();
+            if (uf) {
+              out.content.file.filename = uf.filename || uf.originalName || out.content.file.filename;
+              out.content.file.size = uf.size || out.content.file.size;
+              out.content.file.uploadedFileId = String(uf._id);
+              if (uf.blobName) {
+                try {
+                  const url = await generateDownloadSas(uf.blobName, 30);
+                  out.content.file.downloadUrl = url;
+                } catch (e) {
+                  // ignore SAS generation errors
+                }
+              }
+            }
+          } catch (e) {
+            // ignore per-file failures
+          }
+        }
+      } catch (e) {
+        // ignore
+      }
+      // mark whether this submission belongs to the requester
+      try { out.mine = out.student && String(out.student._id || out.student) === String(req.user._id); } catch (e) { out.mine = false }
+      return out;
+    }));
+
+    res.json(enriched || []);
+  } catch (e) {
+    console.error('[assignments.getSubmissions] error', e && (e.message || e));
+    res.status(500).json({ error: 'Server error' });
+  }
 });
 
 // Update assignment (grade or other updates)
@@ -284,6 +442,7 @@ router.put('/:id/assignments/:assignmentId/submissions/:submissionId', requireAu
 // Files: upload/list/delete (basic)
 router.get('/:id/files', requireAuth, async (req, res) => {
   try {
+    await ensureClient();
     // simple: store files in course.meta.files
     const course = await Course.findById(req.params.id);
     // For each file, if blobName present, generate a short-lived download URL
@@ -306,6 +465,7 @@ router.get('/:id/files', requireAuth, async (req, res) => {
 
 // Admin/debug: list UploadedFile documents for a course (helps verify persistence)
 router.get('/:id/uploaded-files', requireAuth, async (req, res) => {
+  await ensureClient();
   try {
     const docs = await UploadedFile.find({ course: req.params.id, deleted: { $ne: true } }).sort({ createdAt: -1 }).lean();
     res.json(docs);
@@ -357,6 +517,7 @@ router.post('/:id/files', requireAuth, upload.single('file'), async (req, res) =
 });
 
 router.delete('/:id/files/:fileId', requireAuth, async (req, res) => {
+  await ensureClient();
   try {
     const course = await Course.findById(req.params.id);
     if (!course) return res.status(404).json({ error: 'Course not found' });
@@ -423,6 +584,7 @@ router.delete('/:id/files/:fileId', requireAuth, async (req, res) => {
 
 // Generate a short-lived download URL for a specific file (authenticated)
 router.get('/:id/files/:fileId/download', requireAuth, async (req, res) => {
+  await ensureClient();
   try {
     const course = await Course.findById(req.params.id);
     if (!course) return res.status(404).json({ error: 'Course not found' });

@@ -70,8 +70,8 @@ function InstructorCoursePage() {
               // Persist both meta.classCode and joinCode to keep DB canonical code in sync with UI
               await updateCourse(token, id, { meta: { ...serverMeta, classCode: code }, joinCode: code })
             } catch (e) {
-              // ignore persistence errors (keep local copy)
-              console.warn('Failed to persist classCode to server', e.message || e)
+              // ignore persistence errors (keep local copy) but notify instructor
+              showMessage && showMessage('Failed to persist class code to server (saved locally)', 'warning')
             }
           }
         } catch (e) {
@@ -188,12 +188,11 @@ function InstructorCoursePage() {
         showMessage('Course updated', 'success')
       } else {
         // unexpected shape, log and fallback
-        console.warn('updateCourse returned unexpected payload', updated)
+        showMessage && showMessage('Course update returned unexpected payload (saved locally)', 'warning')
         setCourse(prev => ({ ...prev, ...updates }))
         showMessage('Course updated (local)', 'warning')
       }
     } catch (e) {
-      console.error('saveEdit failed', e)
       setCourse(prev => ({ ...prev, ...updates }))
       showMessage('Failed to save course changes — saved locally', 'error')
       try {
@@ -332,7 +331,6 @@ function InstructorCoursePage() {
                     setFiles(prev => prev.filter(f => f.id !== fileId))
                     showMessage('File deleted', 'success')
                   } catch (e) {
-                    console.error('deleteFile failed', e)
                     showMessage(e.message || 'Delete failed', 'error')
                   }
                 },
@@ -385,21 +383,20 @@ function InstructorCoursePage() {
                     setCourse(prev => ({ ...prev, ...updatedCourse }))
                     showMessage('Course details updated', 'success')
                   } else {
-                    console.warn('updateCourseDetails returned unexpected payload', updated)
+                    showMessage && showMessage('Course details updated (local)', 'warning')
                     setCourse(prev => ({ ...prev, ...updates }))
-                    showMessage('Course details updated (local)', 'warning')
                   }
-                } catch (e) {
-                  // fallback local
-                  setCourse(prev => ({ ...prev, ...updates }))
-                  showMessage('Failed to update course details — saved locally', 'error')
-                  try {
-                    const key = `eduverse_course_${id}_meta`
-                    const raw = localStorage.getItem(key)
-                    const meta = raw ? JSON.parse(raw) : {}
-                    localStorage.setItem(key, JSON.stringify({ ...meta, ...updates }))
-                  } catch (e) {}
-                }
+                  } catch (e) {
+                    // fallback local
+                    setCourse(prev => ({ ...prev, ...updates }))
+                    showMessage && showMessage('Failed to update course details — saved locally', 'error')
+                    try {
+                      const key = `eduverse_course_${id}_meta`
+                      const raw = localStorage.getItem(key)
+                      const meta = raw ? JSON.parse(raw) : {}
+                      localStorage.setItem(key, JSON.stringify({ ...meta, ...updates }))
+                    } catch (e) {}
+                  }
               }
             }} />
           </div>
