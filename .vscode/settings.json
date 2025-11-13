@@ -1,0 +1,8 @@
+{
+    "appService.zipIgnorePattern": [
+        "node_modules{,/**}",
+        ".vscode{,/**}"
+    ],
+    "appService.defaultWebAppToDeploy": "/subscriptions/45dd414c-aff9-4b95-9bfd-9ce746f28e41/resourceGroups/EduVerse/providers/Microsoft.Web/sites/eduversebackend",
+    "appService.deploySubpath": "eduverse-backend"
+}
