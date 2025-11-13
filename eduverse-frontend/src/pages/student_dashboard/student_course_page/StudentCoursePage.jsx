@@ -98,7 +98,7 @@ function StudentCoursePage() {
             }
           }
         } catch (e) {}
-        setCourse({ id, title: 'Distributed Database Systems [CSL7750] - Fall 2025', bannerSeed: 42 })
+        setCourse({ id, title: 'Distributed Database Systems [CSL7750] - Fall 2025', meta: { coverImage: '0.jpg' } })
       }
     }
     load()
@@ -107,10 +107,23 @@ function StudentCoursePage() {
 
   if (!course) return null
 
+  // helper to derive cover image path
+  function getCoverImage(c) {
+    try {
+      const meta = c && (c.meta || {})
+      if (meta && meta.coverImage) return `/${meta.coverImage}`
+      const key = c && (c._id || c.id || c.joinCode || '')
+      let sum = 0
+      for (let i = 0; i < key.length; i++) sum += key.charCodeAt(i)
+      const idx = (sum || 0) % 4
+      return `/${idx}.jpg`
+    } catch (e) { return '/0.jpg' }
+  }
+
   return (
     <div className="w-full max-w-7xl mx-auto py-4">
       <div className="rounded-lg overflow-hidden mb-4">
-        <div className="w-full h-44 bg-cover bg-center flex items-end" style={{ backgroundImage: `url(https://picsum.photos/1200/300?random=${course.bannerSeed || 42})` }}>
+        <div className="w-full h-44 bg-cover bg-center flex items-end" style={{ backgroundImage: `url(${getCoverImage(course)})` }}>
           <div className="p-6 bg-linear-to-t from-black/50 to-transparent w-full">
             <h1 className="text-2xl md:text-3xl text-white font-bold truncate">{course.title}</h1>
           </div>

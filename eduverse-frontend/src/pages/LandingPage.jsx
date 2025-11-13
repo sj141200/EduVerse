@@ -39,7 +39,7 @@ function LandingPage() {
             <FadeInSection delay={300}>
               <div className="rounded-xl overflow-hidden shadow-2xl">
                 <img
-                  src="https://picsum.photos/900/560?random=12"
+                  src="/hero.jpg"
                   alt="classroom overview"
                   className="w-full h-auto object-cover"
                 />

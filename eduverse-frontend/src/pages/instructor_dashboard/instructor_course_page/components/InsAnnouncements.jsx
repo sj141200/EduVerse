@@ -37,9 +37,7 @@ function InsAnnouncements(){
         const key = it._id || it.id || JSON.stringify(it)
         let authorName
         if (typeof it.author === 'string') {
-          // if it's a likely object id, show generic label instead of raw id
-          if (it.author.length >= 8) authorName = 'Instructor'
-          else authorName = it.author
+          authorName = it.author
         } else {
           authorName = (it.author && (it.author.name || it.author.username)) || 'Instructor'
         }

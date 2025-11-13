@@ -35,7 +35,6 @@ function Sidebar() {
         // enrolled: exclude created
         const enrolled = mapped.filter(c => !created.find(x => x.id === c.id));
         setCreatedCourses(created);
-        setEnrolledCourses(enrolled);
       } catch (e) {
         console.warn('Failed to load courses for sidebar', e.message);
       }

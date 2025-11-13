@@ -26,3 +26,8 @@ export async function getSubmissions(courseId, assignmentId, token) {
   const t = token || undefined;
   return apiFetch(`/courses/${courseId}/assignments/${assignmentId}/submissions`, { method: 'GET', token: t });
 }
+
+export async function gradeSubmission(courseId, assignmentId, submissionId, payload, token) {
+  const t = token || undefined;
+  return apiFetch(`/courses/${courseId}/assignments/${assignmentId}/submissions/${submissionId}`, { method: 'PUT', body: payload, token: t });
+}

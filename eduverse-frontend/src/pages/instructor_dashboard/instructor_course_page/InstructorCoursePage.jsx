@@ -6,6 +6,8 @@ import { useAuth } from '../../../context/AuthContext'
 import { fetchCourseDetails } from '../../../api/courses'
 import { createAnnouncement as apiCreateAnnouncement } from '../../../api/announcements'
 import { updateCourse } from '../../../api/courses'
+import { uploadFileWithProgress, deleteFile as apiDeleteFile } from '../../../api/files'
+import { getSubmissions, gradeSubmission as apiGradeSubmission } from '../../../api/assignments'
 import { getToken } from '../../../api/auth'
 
 function TabLink({ to, children }) {
@@ -34,7 +36,7 @@ function InstructorCoursePage() {
 
   const [editing, setEditing] = useState(false)
   const [editTitle, setEditTitle] = useState('')
-  const [editSeed, setEditSeed] = useState('')
+  // bannerSeed is no longer editable; cover images are chosen deterministically
   const { showMessage } = useMessage()
 
   useEffect(() => {
@@ -76,7 +78,27 @@ function InstructorCoursePage() {
           // ignore
         }
 
-        // merge persisted local edits (dev-friendly) with remote data
+        // ensure the course has a persisted deterministic cover image
+        try {
+          const serverMeta = (data && data.course && data.course.meta) || {}
+          if (!serverMeta.coverImage) {
+            const key = (data && data.course && (data.course._id || data.course.id || data.course.joinCode)) || ''
+            let sum = 0
+            for (let i = 0; i < key.length; i++) sum += key.charCodeAt(i)
+            const idx = (sum || 0) % 4
+            const cover = `${idx}.jpg`
+            try {
+              const token = getToken()
+              await updateCourse(token, id, { meta: { ...serverMeta, coverImage: cover } })
+              // merge into local course object
+              setCourse(prev => ({ ...(prev || {}), meta: { ...(prev && prev.meta ? prev.meta : {}), coverImage: cover } }))
+            } catch (e) {
+              // ignore persistence errors
+            }
+          }
+        } catch (e) {}
+
+          // merge persisted local edits (dev-friendly) with remote data
         try {
           const annKey = `eduverse_course_${id}_announcements`
           const fileKey = `eduverse_course_${id}_files`
@@ -119,7 +141,7 @@ function InstructorCoursePage() {
             }
           }
         } catch (e) {}
-        setCourse({ id, title: 'Distributed Database Systems [CSL7750] - Fall 2025', bannerSeed: 42 })
+        setCourse({ id, title: 'Distributed Database Systems [CSL7750] - Fall 2025', meta: { coverImage: '0.jpg' } })
       }
     }
     load()
@@ -133,7 +155,6 @@ function InstructorCoursePage() {
 
   function startEdit() {
     setEditTitle(course.title || '')
-    setEditSeed(String(course.bannerSeed || ''))
     setEditing(true)
   }
 
@@ -157,46 +178,45 @@ function InstructorCoursePage() {
   }
 
   async function saveEdit() {
-    const updates = { title: editTitle, bannerSeed: Number(editSeed) || course.bannerSeed }
-      try {
-        const token = getToken()
-        const updated = await updateCourse(token, id, updates)
-        const updatedCourse = (updated && (updated._id || updated.id || updated.course)) ? (updated.course || updated) : null
-        if (updatedCourse && typeof updatedCourse === 'object') {
-          setCourse(prev => ({ ...prev, ...updatedCourse }))
-          showMessage('Course updated', 'success')
-        } else {
-          // unexpected shape, log and fallback
-          console.warn('updateCourse returned unexpected payload', updated)
-          setCourse(prev => ({ ...prev, ...updates }))
-          showMessage('Course updated (local)', 'warning')
-        }
-      } catch (e) {
-        console.error('saveEdit failed', e)
+    const updates = { title: editTitle }
+    try {
+      const token = getToken()
+      const updated = await updateCourse(token, id, updates)
+      const updatedCourse = (updated && (updated._id || updated.id || updated.course)) ? (updated.course || updated) : null
+      if (updatedCourse && typeof updatedCourse === 'object') {
+        setCourse(prev => ({ ...prev, ...updatedCourse }))
+        showMessage('Course updated', 'success')
+      } else {
+        // unexpected shape, log and fallback
+        console.warn('updateCourse returned unexpected payload', updated)
         setCourse(prev => ({ ...prev, ...updates }))
-        showMessage('Failed to save course changes — saved locally', 'error')
-        try {
-          const key = `eduverse_course_${id}_meta`
-          const raw = localStorage.getItem(key)
-          const meta = raw ? JSON.parse(raw) : {}
-          localStorage.setItem(key, JSON.stringify({ ...meta, ...updates }))
-        } catch (e) {}
-      } finally {
-        setEditing(false)
+        showMessage('Course updated (local)', 'warning')
       }
+    } catch (e) {
+      console.error('saveEdit failed', e)
+      setCourse(prev => ({ ...prev, ...updates }))
+      showMessage('Failed to save course changes — saved locally', 'error')
+      try {
+        const key = `eduverse_course_${id}_meta`
+        const raw = localStorage.getItem(key)
+        const meta = raw ? JSON.parse(raw) : {}
+        localStorage.setItem(key, JSON.stringify({ ...meta, ...updates }))
+      } catch (e) {}
+    } finally {
+      setEditing(false)
+    }
   }
 
   return (
     <div className="w-full max-w-7xl mx-auto py-4">
       <div className="rounded-lg overflow-hidden mb-4">
-        <div className="w-full h-44 bg-cover bg-center flex items-end" style={{ backgroundImage: `url(https://picsum.photos/1200/300?random=${course.bannerSeed || 42})` }}>
+        <div className="w-full h-44 bg-cover bg-center flex items-end" style={{ backgroundImage: `url(${(course && course.meta && course.meta.coverImage) ? `/${course.meta.coverImage}` : '/0.jpg'})` }}>
           <div className="p-6 bg-linear-to-t from-black/50 to-transparent w-full flex items-start justify-between gap-4">
             <div className="flex-1">
               {editing ? (
                 <div className="space-y-2">
                   <input className="input input-sm input-bordered w-full text-lg" value={editTitle} onChange={e => setEditTitle(e.target.value)} />
                   <div className="flex items-center gap-2">
-                    <input className="input input-sm input-bordered w-40" value={editSeed} onChange={e => setEditSeed(e.target.value)} placeholder="bannerSeed" />
                     <button className="btn btn-sm btn-primary" onClick={saveEdit}>Save</button>
                     <button className="btn btn-sm" onClick={() => setEditing(false)}>Cancel</button>
                   </div>
@@ -285,17 +305,37 @@ function InstructorCoursePage() {
                   } catch (e) {}
                 }
               },
-              uploadFile: (file) => {
+              uploadFile: async (file) => {
                 if (!file) return
-                const f = { id: Date.now().toString(), name: file.name || String(file), size: file.size ? `${Math.round(file.size/1024)} KB` : '—', uploadedAt: new Date().toLocaleString() }
-                setFiles(prev => [f, ...prev])
+                // optimistic local entry will be replaced when server responds
+                const tempId = `tmp_${Date.now().toString(36)}`
+                const temp = { id: tempId, name: file.name, size: file.size ? `${Math.round(file.size/1024)} KB` : '—', uploading: true, progress: 0 }
+                setFiles(prev => [temp, ...prev])
                 try {
-                  const key = `eduverse_course_${id}_files`
-                  const raw = localStorage.getItem(key)
-                  const arr = raw ? JSON.parse(raw) : []
-                  localStorage.setItem(key, JSON.stringify([f, ...arr]))
-                } catch (e) {}
+                  const token = getToken()
+                  const res = await uploadFileWithProgress(id, file, token, (p) => {
+                    setFiles(prev => prev.map(x => x.id === tempId ? { ...x, progress: p } : x))
+                  })
+                  // backend returns file metadata (with id, downloadUrl, etc.)
+                  const added = res
+                  setFiles(prev => [added, ...prev.filter(x => x.id !== tempId)])
+                  showMessage('File uploaded', 'success')
+                } catch (e) {
+                  setFiles(prev => prev.filter(x => x.id !== tempId))
+                  showMessage(e.message || 'Upload failed', 'error')
+                }
               },
+                deleteFile: async (fileId) => {
+                  try {
+                    const token = getToken()
+                    await apiDeleteFile(id, fileId, token)
+                    setFiles(prev => prev.filter(f => f.id !== fileId))
+                    showMessage('File deleted', 'success')
+                  } catch (e) {
+                    console.error('deleteFile failed', e)
+                    showMessage(e.message || 'Delete failed', 'error')
+                  }
+                },
               addAssignment: (title, due) => {
                 const asg = { id: Date.now().toString(), title: title || 'New Assignment', due: due || 'TBD', status: 'Open' }
                 setAssignments(prev => [asg, ...prev])
@@ -306,7 +346,8 @@ function InstructorCoursePage() {
                   localStorage.setItem(key, JSON.stringify([asg, ...arr]))
                 } catch (e) {}
               },
-              gradeAssignment: (assignmentId, grade) => {
+              gradeAssignment: async (assignmentId, grade) => {
+                // legacy support: update assignment-level grade locally
                 setAssignments(prev => prev.map(a => a.id === assignmentId ? { ...a, grade, status: 'Graded' } : a))
                 try {
                   const key = `eduverse_course_${id}_assignments`
@@ -315,6 +356,25 @@ function InstructorCoursePage() {
                   const updated = arr.map(a => a.id === assignmentId ? { ...a, grade, status: 'Graded' } : a)
                   localStorage.setItem(key, JSON.stringify(updated))
                 } catch (e) {}
+              },
+              // grade a specific submission (assignmentId, submissionId)
+              gradeSubmission: async (assignmentId, submissionId, payload) => {
+                try {
+                  const token = getToken()
+                  const updated = await apiGradeSubmission(id, assignmentId, submissionId, payload, token)
+                  // update local assignments state: find assignment, update the submission entry
+                  setAssignments(prev => prev.map(a => {
+                    if ((a._id || a.id) !== assignmentId) return a
+                    const subs = (a.submissions || []).map(s => {
+                      if ((s._id || s.id) !== submissionId) return s
+                      return { ...s, ...updated }
+                    })
+                    return { ...a, submissions: subs }
+                  }))
+                  return updated
+                } catch (e) {
+                  throw e
+                }
               },
               updateCourseDetails: async (updates) => {
                 try {
