@@ -3,8 +3,8 @@ import { getSecret } from './keyVault.js'
 
 // Helper to interact with Azure Blob Storage. Will try env vars first,
 // and fall back to Azure Key Vault secrets when available.
-let account = process.env.AZURE_STORAGE_ACCOUNT || process.env.STORAGEACCOUNT || 'eduversestorage';
-let key = process.env.AZURE_STORAGE_ACCESS_KEY || process.env.STORAGEACCESSKEY || 'DK5oa4G0x9Cvlt2dgzw8eA7XrxEsidZFzOr5FfRU00RJMIWb9nJGmHDGSAGcoGFX1c2iABWZ7uVN+ASt5e7woA==';
+let account = "";
+let key = "";
 let containerName = process.env.AZURE_STORAGE_CONTAINER || process.env.STORAGE_CONTAINER || 'files';
 
 let sharedKeyCredential = null;
